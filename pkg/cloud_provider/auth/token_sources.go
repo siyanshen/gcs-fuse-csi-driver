@@ -85,6 +85,7 @@ func (ts *GCPTokenSource) fetchK8sSAToken(ctx context.Context) (*oauth2.Token, e
 		return nil, fmt.Errorf("could not find token for the identity pool %q", ts.meta.GetIdentityPool())
 	}
 
+	klog.Infof("Calling Create SA token for SA %s/%s", ts.k8sSANamespace, ts.k8sSAName)
 	ttl := int64(10 * time.Minute.Seconds())
 	resp, err := ts.k8sClients.CreateServiceAccountToken(
 		ctx,

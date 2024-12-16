@@ -19,6 +19,7 @@ package webhook
 
 import (
 	"path/filepath"
+	"strconv"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -27,21 +28,25 @@ import (
 )
 
 const (
-	GcsFuseSidecarName                    = "gke-gcsfuse-sidecar"
-	MetadataPrefetchSidecarName           = "gke-gcsfuse-metadata-prefetch"
-	SidecarContainerTmpVolumeName         = "gke-gcsfuse-tmp"
-	SidecarContainerTmpVolumeMountPath    = "/gcsfuse-tmp"
-	SidecarContainerBufferVolumeName      = "gke-gcsfuse-buffer"
-	SidecarContainerBufferVolumeMountPath = "/gcsfuse-buffer"
-	SidecarContainerCacheVolumeName       = "gke-gcsfuse-cache"
-	SidecarContainerCacheVolumeMountPath  = "/gcsfuse-cache"
+	GcsFuseSidecarName                     = "gke-gcsfuse-sidecar"
+	MetadataPrefetchSidecarName            = "gke-gcsfuse-metadata-prefetch"
+	SidecarContainerTmpVolumeName          = "gke-gcsfuse-tmp"
+	SidecarContainerTmpVolumeMountPath     = "/gcsfuse-tmp"
+	SidecarContainerBufferVolumeName       = "gke-gcsfuse-buffer"
+	SidecarContainerBufferVolumeMountPath  = "/gcsfuse-buffer"
+	SidecarContainerCacheVolumeName        = "gke-gcsfuse-cache"
+	SidecarContainerCacheVolumeMountPath   = "/gcsfuse-cache"
+	SidecarContainerSATokenVolumeName      = "gcsfuse-sa-token"  // #nosec G101
+	SidecarContainerSATokenVolumeMountPath = "/gcsfuse-sa-token" // #nosec G101
+	TokenPath                              = "token"             // #nosec G101
 
 	// Webhook relevant volume attributes.
 	gcsFuseMetadataPrefetchOnMountVolumeAttribute = "gcsfuseMetadataPrefetchOnMount"
 
 	// See the nonroot user discussion: https://github.com/GoogleContainerTools/distroless/issues/443
-	NobodyUID = 65534
-	NobodyGID = 65534
+	NobodyUID           = 65534
+	NobodyGID           = 65534
+	tokenExpiryDuration = 600
 )
 
 var (
@@ -90,6 +95,11 @@ var (
 		Name:      SidecarContainerCacheVolumeName,
 		MountPath: SidecarContainerCacheVolumeMountPath,
 	}
+
+	saTokenVolumeMount = corev1.VolumeMount{
+		Name:      SidecarContainerSATokenVolumeName,
+		MountPath: SidecarContainerSATokenVolumeMountPath,
+	}
 )
 
 func GetNativeSidecarContainerSpec(c *Config) corev1.Container {
@@ -103,6 +113,13 @@ func GetNativeSidecarContainerSpec(c *Config) corev1.Container {
 func GetSidecarContainerSpec(c *Config) corev1.Container {
 	limits, requests := prepareResourceList(c)
 
+	var volumeMounts []corev1.VolumeMount
+	if c.HostNetwork {
+		volumeMounts = []corev1.VolumeMount{TmpVolumeMount, buffVolumeMount, cacheVolumeMount, saTokenVolumeMount}
+	} else {
+		volumeMounts = []corev1.VolumeMount{TmpVolumeMount, buffVolumeMount, cacheVolumeMount}
+	}
+
 	// The sidecar container follows Restricted Pod Security Standard,
 	// see https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
 	container := corev1.Container{
@@ -112,12 +129,13 @@ func GetSidecarContainerSpec(c *Config) corev1.Container {
 		SecurityContext: GetSecurityContext(),
 		Args: []string{
 			"--v=5",
+			"--host-network=" + strconv.FormatBool(c.HostNetwork),
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits:   limits,
 			Requests: requests,
 		},
-		VolumeMounts: []corev1.VolumeMount{TmpVolumeMount, buffVolumeMount, cacheVolumeMount},
+		VolumeMounts: volumeMounts,
 	}
 
 	return container
@@ -216,6 +234,27 @@ func (si *SidecarInjector) GetMetadataPrefetchSidecarContainerSpec(pod *corev1.P
 	}
 
 	return container
+}
+
+func GetSATokenVolume(projectID string) corev1.Volume {
+	saTokenVolume := corev1.Volume{
+		Name: SidecarContainerSATokenVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							Audience:          projectID + ".svc.id.goog",
+							ExpirationSeconds: &[]int64{tokenExpiryDuration}[0],
+							Path:              TokenPath,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return saTokenVolume
 }
 
 // GetSidecarContainerVolumeSpec returns volumes required by the sidecar container,
