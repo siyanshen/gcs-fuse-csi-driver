@@ -136,7 +136,8 @@ func (s *nodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 		return nil, status.Errorf(codes.NotFound, "failed to get pod: %v", err)
 	}
 
-	if s.shouldStartTokenServer(pod) && pod.Spec.HostNetwork {
+	// webhook new, sidecar old, driver new
+	if pod.Spec.HostNetwork {
 		identityProvider := s.driver.config.TokenManager.GetIdentityProvider()
 		fuseMountOptions = joinMountOptions(fuseMountOptions, []string{"token-server-identity-provider=" + identityProvider})
 	}

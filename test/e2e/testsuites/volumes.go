@@ -320,6 +320,7 @@ func (t *gcsFuseCSIVolumesTestSuite) DefineTests(driver storageframework.TestDri
 		tPod := specs.NewTestPod(f.ClientSet, f.Namespace)
 		tPod.SetCustomSidecarContainerImage()
 		tPod.SetupVolume(l.volumeResource, volumeName, mountPath, false)
+		tPod.EnableHostNetwork()
 
 		ginkgo.By("Deploying the pod")
 		tPod.Create(ctx)
