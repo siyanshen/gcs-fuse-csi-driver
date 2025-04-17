@@ -38,12 +38,21 @@ const (
 
 	// mount options that both CSI mounter and sidecar mounter should understand.
 	DisableMetricsForGKE = "disable-metrics-for-gke"
+	// ssyssy update this
+	KubeletDir                  = "/var/lib/kubelet"
+	MounterPodEmptyDirMountPath = "/var/lib/kubelet/pods/empty-dir"
+	MounterPodErrorFile         = "/var/lib/kubelet/pods/error-file"
 )
 
 var (
 	targetPathRegexp       = regexp.MustCompile(`/var/lib/kubelet/pods/(.*)/volumes/kubernetes\.io~csi/(.*)/mount`)
 	emptyReplacementRegexp = regexp.MustCompile(`kubernetes\.io~csi/(.*)/mount`)
 )
+
+// ssyssy implement this
+func PrepareEmptyDirForStagingPath(targetPath string, podId string, createEmptyDir bool) (string, error) {
+	return "", nil
+}
 
 // ConvertLabelsStringToMap converts the labels from string to map
 // example: "key1=value1,key2=value2" gets converted into {"key1": "value1", "key2": "value2"}

@@ -41,6 +41,7 @@ type Interface interface {
 	ConfigurePodLister(nodeName string)
 	ConfigureNodeLister(nodeName string)
 	GetPod(namespace, name string) (*corev1.Pod, error)
+	K8sClient() kubernetes.Interface
 	CreateServiceAccountToken(ctx context.Context, namespace, name string, tokenRequest *authenticationv1.TokenRequest) (*authenticationv1.TokenRequest, error)
 	GetGCPServiceAccountName(ctx context.Context, namespace, name string) (string, error)
 	GetNode(name string) (*corev1.Node, error)
@@ -215,6 +216,10 @@ func (c *Clientset) GetPod(namespace, name string) (*corev1.Pod, error) {
 	}
 
 	return c.podLister.Pods(namespace).Get(name)
+}
+
+func (c *Clientset) K8sClient() kubernetes.Interface {
+	return c.k8sClients
 }
 
 func (c *Clientset) GetNode(name string) (*corev1.Node, error) {

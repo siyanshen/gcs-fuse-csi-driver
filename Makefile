@@ -30,11 +30,13 @@ IDENTITY_POOL ?= ${PROJECT}.svc.id.goog
 
 
 DRIVER_BINARY = gcs-fuse-csi-driver
+CONTROLLER_BINARY = gcs-fuse-csi-controller
 SIDECAR_BINARY = gcs-fuse-csi-driver-sidecar-mounter
 WEBHOOK_BINARY = gcs-fuse-csi-driver-webhook
 PREFETCH_BINARY = gcs-fuse-csi-driver-metadata-prefetch
 
 DRIVER_IMAGE = ${REGISTRY}/${DRIVER_BINARY}
+CONTROLLER_IMAGE = ${REGISTRY}/${CONTROLLER_BINARY}
 SIDECAR_IMAGE = ${REGISTRY}/${SIDECAR_BINARY}
 WEBHOOK_IMAGE = ${REGISTRY}/${WEBHOOK_BINARY}
 PREFETCH_IMAGE = ${REGISTRY}/${PREFETCH_BINARY}
@@ -52,6 +54,7 @@ $(info STAGINGVERSION is ${STAGINGVERSION})
 $(info DRIVER_IMAGE is ${DRIVER_IMAGE})
 $(info SIDECAR_IMAGE is ${SIDECAR_IMAGE})
 $(info WEBHOOK_IMAGE is ${WEBHOOK_IMAGE})
+$(info CONTROLLER_IMAGE is ${CONTROLLER_IMAGE})
 
 all: driver sidecar-mounter webhook metadata-prefetch
 
@@ -223,6 +226,7 @@ generate-spec-yaml:
 	./deploy/install-kustomize.sh
 	cd ./deploy/overlays/${OVERLAY}; ${BINDIR}/kustomize edit set image gke.gcr.io/gcs-fuse-csi-driver=${DRIVER_IMAGE}:${STAGINGVERSION};
 	cd ./deploy/overlays/${OVERLAY}; ${BINDIR}/kustomize edit set image gke.gcr.io/gcs-fuse-csi-driver-webhook=${WEBHOOK_IMAGE}:${STAGINGVERSION};
+	cd ./deploy/overlays/${OVERLAY}; ${BINDIR}/kustomize edit set image gke.gcr.io/gcs-fuse-csi-driver-controller=${CONTROLLER_IMAGE}:${STAGINGVERSION};
 	cd ./deploy/overlays/${OVERLAY}; ${BINDIR}/kustomize edit add configmap gcsfusecsi-image-config --behavior=merge --disableNameSuffixHash --from-literal=sidecar-image=${SIDECAR_IMAGE}:${STAGINGVERSION};
 	cd ./deploy/overlays/${OVERLAY}; ${BINDIR}/kustomize edit add configmap gcsfusecsi-image-config --behavior=merge --disableNameSuffixHash --from-literal=metadata-sidecar-image=${PREFETCH_IMAGE}:${STAGINGVERSION};
 	echo "[{\"op\": \"replace\",\"path\": \"/spec/tokenRequests/0/audience\",\"value\": \"${IDENTITY_POOL}\"}]" > ./deploy/overlays/${OVERLAY}/project_patch_csi_driver.json

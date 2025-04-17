@@ -47,6 +47,7 @@ type GCSDriverConfig struct {
 	MetricsManager        metrics.Manager
 	DisableAutoconfig     bool
 	WINodeLabelCheck      bool
+	NodeMounterManager    *nodeMounterManager
 }
 
 type GCSDriver struct {
@@ -100,6 +101,7 @@ func NewGCSDriver(config *GCSDriverConfig) (*GCSDriver, error) {
 	if config.RunController {
 		csc := []csi.ControllerServiceCapability_RPC_Type{
 			csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+			csi.ControllerServiceCapability_RPC_PUBLISH_UNPUBLISH_VOLUME,
 		}
 		driver.addControllerServiceCapabilities(csc)
 

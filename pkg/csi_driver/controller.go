@@ -23,6 +23,7 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/googlecloudplatform/gcs-fuse-csi-driver/pkg/cloud_provider/storage"
+	sidecarmounter "github.com/googlecloudplatform/gcs-fuse-csi-driver/pkg/sidecar_mounter"
 	"github.com/googlecloudplatform/gcs-fuse-csi-driver/pkg/util"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -40,6 +41,7 @@ const (
 	ParameterKeyPVCName      = "csi.storage.k8s.io/pvc/name"
 	ParameterKeyPVCNamespace = "csi.storage.k8s.io/pvc/namespace"
 	ParameterKeyPVName       = "csi.storage.k8s.io/pv/name"
+	keyMountLocality         = "mountlocality"
 
 	// User provided labels.
 	ParameterKeyLabels = "labels"
@@ -113,6 +115,91 @@ func (s *controllerServer) ValidateVolumeCapabilities(ctx context.Context, req *
 			Parameters:         req.GetParameters(),
 		},
 	}, nil
+}
+
+// TODO: implement ControllerPublishVolume
+func (s *controllerServer) ControllerPublishVolume(ctx context.Context, req *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
+	// Validate arguments
+	volumeID := req.GetVolumeId()
+	if len(volumeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Volume ID must be provided")
+	}
+	if err := s.driver.validateVolumeCapabilities([]*csi.VolumeCapability{req.GetVolumeCapability()}); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	nodeID := req.NodeId
+	if len(nodeID) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "ControllerPublishVolume Node ID must be provided")
+	}
+
+	// Acquires the lock for the volume on that node only, because we need to support the ability
+	// to publish the same volume onto different nodes concurrently
+	lockingVolumeID := fmt.Sprintf("%s/%s", nodeID, volumeID)
+	if acquired := s.volumeLocks.TryAcquire(lockingVolumeID); !acquired {
+		return nil, status.Errorf(codes.Aborted, util.VolumeOperationAlreadyExistsFmt, lockingVolumeID)
+	}
+	defer s.volumeLocks.Release(lockingVolumeID)
+
+	vc := req.GetVolumeContext()
+
+	klog.Infof("ssyssy, volume context: %v", vc)
+
+	// ssyssy, Verify GCS bucket instance existence.
+
+	// ssyssy, Parse volume.
+
+	// Skip ControllerPublsihVolume for non node-local-mount mode.
+	if !isNodeLocalMount(vc) {
+		klog.Infof("Node mount locality mode was not found, skipping ControllerPublishVolume.")
+		return &csi.ControllerPublishVolumeResponse{}, nil
+	}
+
+	// Prepare mount arguments.
+	mc := &sidecarmounter.MountConfig{
+		VolumeName: req.GetVolumeId(),
+	}
+	var mountOptions []string
+	mc.Options = mountOptions
+
+	// Prepare mounter pod config
+	nm := s.driver.config.NodeMounterManager
+	podName := createMounterPodName(nodeID, "ssy", "ssy", "instanceName")
+	podConfig := &mounterPodConfig{
+		podName:             podName,
+		nodeID:              nodeID,
+		namespace:           nm.mounterPodNamespace,
+		image:               nm.mounterPodImage,
+		priorityClass:       nm.mounterPodPriorityClass,
+		memoryRequest:       "2Gi",
+		cpuRequest:          "3Gi",
+		memoryLimit:         "4Gi",
+		cpuLimit:            "5Gi",
+		mountOptionsFlagMap: mc.FlagMap,
+	}
+
+	// Create the mounter pod if it doesn't exist.
+	klog.Infof("ControllerPublishVolume attempting to create mounter pod %s/%s...", podConfig.namespace, podConfig.podName)
+	if err := nm.createMounterPod(ctx, podConfig); err != nil {
+		return nil, err
+	}
+
+	// Wait until the mounter pod is scheduled to a node.
+	// This ensures that the mounter pod can be scheduled even if there are resource constraints on the node,
+	// such as needing to wait for a regular pod to be evicted first.
+	// Without this check,      could return an internal error
+	// because the mounter pod is not yet scheduled and might not appear in the informer cache.
+	if err := nm.waitForMounterPodScheduled(ctx, podName); err != nil {
+		return nil, err
+	}
+
+	klog.Infof("ControllerPublishVolume succeeded for mounter pod %s/%s on volume %q", podConfig.namespace, podConfig.podName, volumeID)
+	return &csi.ControllerPublishVolumeResponse{}, nil
+}
+
+func (s *controllerServer) ControllerUnpublishVolume(ctx context.Context, req *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
+	// Validate arguments.
+	_ = req.GetVolumeId()
+	return &csi.ControllerUnpublishVolumeResponse{}, nil
 }
 
 func (s *controllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {

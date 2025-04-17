@@ -25,6 +25,7 @@ import (
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 type FakeNodeConfig struct {
@@ -47,6 +48,10 @@ func NewFakeClientset() *FakeClientset {
 }
 
 func (c *FakeClientset) ConfigurePodLister(_ string) {}
+
+func (c *FakeClientset) K8sClient() kubernetes.Interface {
+	return nil
+}
 
 func (c *FakeClientset) ConfigureNodeLister(_ string) {}
 
